@@ -1,4 +1,4 @@
-//! Benchmarking setup for pallet-template
+//! Benchmarking setup for pallet-nft_currency
 
 use super::*;
 

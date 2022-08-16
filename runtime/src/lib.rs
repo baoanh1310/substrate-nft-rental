@@ -43,8 +43,8 @@ use pallet_transaction_payment::CurrencyAdapter;
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
-/// Import the template pallet.
-pub use pallet_template;
+/// Import the nft_currency pallet.
+pub use pallet_nft_currency;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -93,8 +93,8 @@ pub mod opaque {
 //   https://docs.substrate.io/v3/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("node-template"),
-	impl_name: create_runtime_str!("node-template"),
+	spec_name: create_runtime_str!("node-nft_currency"),
+	impl_name: create_runtime_str!("node-nft_currency"),
 	authoring_version: 1,
 	// The version of the runtime specification. A full node will not attempt to use its native
 	//   runtime in substitute for the on-chain Wasm runtime unless all of `spec_name`,
@@ -262,8 +262,8 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
-/// Configure the pallet-template in pallets/template.
-impl pallet_template::Config for Runtime {
+/// Configure the pallet-nft_currency in pallets/nft_currency.
+impl pallet_nft_currency::Config for Runtime {
 	type Event = Event;
 }
 
@@ -282,8 +282,8 @@ construct_runtime!(
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
-		// Include the custom logic from the pallet-template in the runtime.
-		TemplateModule: pallet_template,
+		// Include the custom logic from the pallet-nft_currency in the runtime.
+		NftCurrencyPallet: pallet_nft_currency,
 	}
 );
 
@@ -328,7 +328,7 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		[pallet_template, TemplateModule]
+		[pallet_nft_currency, NftCurrencyPallet]
 	);
 }
 
