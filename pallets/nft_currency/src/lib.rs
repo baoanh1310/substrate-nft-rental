@@ -4,6 +4,15 @@
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
+use frame::support::{
+	dispatch::{result::Result,DispatchError,DispatchResult},
+	traits::Get,
+};
+pub use sp_std::*;
+pub use frame_support::{pallet_prelude::{Member, StorageMap,StorageValue}, traits::Currency};
+pub mod nft_currency;
+use nft_currency::{NonFungibleToken};
+use sp_std::vec::Vec;
 
 #[cfg(test)]
 mod mock;
@@ -13,6 +22,7 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+pub use sp_std::*;
 
 #[frame_support::pallet]
 pub mod pallet {
