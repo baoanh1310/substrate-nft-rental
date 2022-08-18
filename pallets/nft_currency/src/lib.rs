@@ -3,19 +3,15 @@
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
-
-pub mod nft;
 pub use pallet::*;
-use frame_support::{
-	dispatch::{result::Result,DispatchError,DispatchResult},
-	traits::Get,
-};
-pub use sp_std::*;
+pub mod nft;
+use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}, ensure, traits::Get};
 pub use frame_support::{pallet_prelude::{Member, StorageMap,StorageValue}};
 pub use frame_support::traits::Currency;
-use nft::{NonFungibleToken};
-use sp_std::vec::Vec;
-pub use frame_system::ensure_signed;
+pub use nft::NonFungibleToken;
+
+pub use frame_system::{ensure_signed, ensure_root};
+pub use frame_system::EnsureRoot;
 
 #[cfg(test)]
 mod mock;
@@ -25,46 +21,70 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
-pub use sp_std::*;
+pub use sp_std::{vec::Vec, convert::Into};
 
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::Currency;
 	use frame_system::pallet_prelude::*;
-
+	pub use super::*;
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		type TokenId: Default + Copy;
+		type TokenId: Default + Copy +Into<u64>;
 		type Currency: Currency<Self::AccountId>;
+		// type Administrator : EnsureOrigin<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
+	#[pallet::without_storage_info]
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
-	#[pallet::getter(fn something)]
-	// Learn more about declaring storage items:
-	// https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
+	#[pallet::getter(fn name)]
 	// name of the nft
-	pub type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
-	// symbol of the nft
-	pub type Symbol<T> = StorageValue<_, Vec<u8>, ValueQuery>;
-	// uri of the nft
-	pub type TokenUri<T: Config>  = StorageMap<_, Blake2_128Concat, u64, Vec<u8>, ValueQuery>;
-	// total count of the token
-	pub type TotalTokens<T> = StorageValue<_, u32, OptionQuery>;
+	pub (super) type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn symbol)]
+	// symbol of the nft
+	pub (super) type Symbol<T> = StorageValue<_, Vec<u8>, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn token_uri)]
+	// uri of the nft
+	pub (super) type TokenUri<T: Config>  = StorageMap<_, Blake2_128Concat, T::TokenId, Vec<u8>, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn total_tokens)]
+	// total count of the token
+	pub (super) type TotalTokens<T> = StorageValue<_, u32, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn token_owner)]
 	// Mapping Token Id => Account Id: to check who is the owner of the token
-	pub type TokenOwner<T: Config> = StorageMap<_,Blake2_128Concat,u64,AccountId, OptionQuery>;
+	pub (super) type TokenOwner<T:Config> = StorageMap<_,Blake2_128Concat,T::TokenId,T::AccountId, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn owner_token)]
 	// To check all the token that the account owns
-	pub type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, AccountId, Vec<u64>, OptionQuery>;
+	pub (super) type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<u64>, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn is_approve_for_all)]
+	// To check all the token that the account owns
+	pub (super) type Approval<T:Config> = StorageMap<_, Blake2_128Concat, (T::AccountId,T::AccountId),bool, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn token_approval)]
+	// To check all the token that the account owns
+	pub (super) type TokenApproval<T:Config> = StorageMap<_, Blake2_128Concat, u64, Vec<T::AccountId>, OptionQuery>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -96,53 +116,23 @@ pub mod pallet {
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://docs.substrate.io/v3/runtime/origins
-			let who = ensure_signed(origin)?;
 
-			// Update storage.
-			<Something<T>>::put(something);
 
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored(something, who));
-			// Return a successful DispatchResultWithPostInfo
-			Ok(())
-		}
-
-		/// An example dispatchable that may throw a custom error.
-		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
-		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
-
-			// Read a value from storage.
-			match <Something<T>>::get() {
-				// Return an error if the value has not been set.
-				None => return Err(Error::<T>::NoneValue.into()),
-				Some(old) => {
-					// Increment the value read from storage; will error in the event of overflow.
-					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
-					// Update the value in storage with the incremented result.
-					<Something<T>>::put(new);
-					Ok(())
-				},
-			}
-		}
 	}
 }
 
+// helper functions
 impl <T:Config>  Pallet<T>{
 
 }
 
-impl<T:Config> NonFungibleToken<T::AccountId> for Pallet<T>{
+impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	type TokenId = T::TokenId;
 	type Currency = T::Currency;
-
+	// type Administrator = T::ForceOrigin;
+	// fn administrator() -> T::AccountId{
+	// 	Self::administrator()
+	// }
 	fn symbol() -> Vec<u8> {
 		Self::symbol()
 	}
@@ -156,7 +146,7 @@ impl<T:Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	}
 
 	fn total() -> Self::TokenId {
-		Self::total()
+		Self::total_tokens()
 	}
 
 	fn total_of_account(account: &T::AccountId) -> u64 {
@@ -168,34 +158,35 @@ impl<T:Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	}
 
 	fn owner_of(token_id: Self::TokenId) -> T::AccountId {
-		Self::owner_of(token_id);
+		Self::owner_of(token_id)
 	}
 
-	fn mint(owner: T::Account, token_id: Self::TokenId) -> Result<Self::TokenId, DispatchError> {
-		todo!()
+	fn mint(account: T::AccountId, token_id: Self::TokenId) -> Result<Self::TokenId, DispatchError> {
+		ensure!(token_id >= Self::total_tokens(), Error::<T>::Invalid);
+		TotalTokens::<T>::mutate(|value| *value+=1);
+		TokenOwner::<T>::mutate(token_id, |owner| *owner = account.clone());
+		OwnerToken::<T>::mutate(account,|list_token| list_token.insert(token_id));
+		Ok(token_id)
 	}
 
-	fn burn(asset_id: Self::TokenId) -> DispatchResult {
-		todo!()
+	fn transfer(from: T::AccountId, to: T::AccountId, token_id: Self::TokenId) -> DispatchResult {
+		ensure!(from == Self::owner_of(token_id), Error::<T>::NotOwner);
+		TokenOwner::<T>::mutate(token_id, |owner| *owner = to.clone());
+		OwnerToken::<T>::mutate(to,|list_token| list_token.insert(token_id));
+		OwnerToken::<T>::mutate(from,|list_token| list_token.remove(token_id));
 	}
 
-	fn transfer(from: T::Account, to: T::Account, asset_id: Self::TokenId) -> DispatchResult {
-		todo!()
+	fn is_approve_for_all(account_approve:(T::AccountId, T::AccountId)) -> bool {
+		Self::is_approve_for_all(account_approve)
 	}
 
-	fn get_approve(token_id: Self::TokenId) -> Option<T::Account> {
-		todo!()
+	fn approve(from: &T::AccountId, to: &T::AccountId, token_id: Self::TokenId) -> DispatchResult {
+		Self::approve(from, to, token_id)
 	}
 
-	fn is_approve_for_all(token_id: Self::TokenId) -> bool {
-		todo!()
-	}
-
-	fn approve(from: &T::Account, to: &T::Account, token_id: Self::TokenId) -> DispatchResult {
-		todo!()
-	}
-
-	fn set_approve_for_all(from: &T::Account, to: &T::Account, token_id: Self::TokenId) -> DispatchResult {
-		todo!()
+	fn set_approve_for_all(from: &T::AccountId, to: &T::AccountId, token_id: Self::TokenId) -> DispatchResult {
+		ensure!(from!=to, Error::<T>::Invalid);
+		Self::do_approve_for_all(from,to, token_id);
+		Ok(())
 	}
 }

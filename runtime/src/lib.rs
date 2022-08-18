@@ -267,6 +267,7 @@ impl pallet_nft_currency::Config for Runtime {
 	type Event = Event;
 	type TokenId = u64 ;
 	type Currency = Balances;
+	//type ForceOrigin = Call;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
