@@ -124,7 +124,7 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000_000)]
-		pub fn transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, ) -> DispatchResult {
+		pub fn transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
 			Ok(())
 		}
 	}
