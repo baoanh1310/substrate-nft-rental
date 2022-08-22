@@ -1,14 +1,11 @@
-use frame_support::{
-	dispatch::{result::Result,DispatchError,DispatchResult},
-	traits::Get,
-};
+use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}, Parameter, traits::Get};
 pub use sp_std::*;
 pub use frame_support::{pallet_prelude::Member, traits::Currency};
 use frame_support::traits::EnsureOrigin;
 use sp_std::vec::Vec;
 
 pub trait NonFungibleToken<AccountId>{
-	type TokenId: Member  + Default+ Copy+Into<u64> ;
+	type TokenId: Parameter+ Member  + Default+ Copy+Into<u64> ;
 	type Currency: Currency<AccountId>;
 	// type Administrator : EnsureOrigin<Self::AccountId>;
 	//
@@ -16,7 +13,7 @@ pub trait NonFungibleToken<AccountId>{
 	fn symbol() -> Vec<u8>;
 	fn name() -> Vec<u8>;
 	fn token_uri(token_id: Self::TokenId) -> Vec<u8>;
-	fn total() -> Self::TokenId;
+	fn total() -> u32;
 
 	fn total_of_account(account: &AccountId) -> u64;
 	fn total_owned(account: &AccountId) -> Vec<(Self::TokenId, Vec<u8>)>;
@@ -27,6 +24,6 @@ pub trait NonFungibleToken<AccountId>{
 	fn is_approve_for_all(account_approve:(AccountId,AccountId)) -> bool;
 
 	fn approve(from: &AccountId, to: &AccountId,token_id: Self::TokenId) -> DispatchResult;
-	fn set_approve_for_all(from: &AccountId, to: &AccountId, token_id: Self::TokenId) -> DispatchResult;
+	fn set_approve_for_all(from: &AccountId, to: &AccountId, approved:bool) -> DispatchResult;
 
 }
