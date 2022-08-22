@@ -1,7 +1,6 @@
-use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult,EncodeLike,MaxEncodedLen}, Parameter, traits::Get};
+use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}};
 pub use sp_std::*;
 pub use frame_support::{pallet_prelude::Member, traits::Currency};
-use frame_support::traits::EnsureOrigin;
 use sp_std::vec::Vec;
 
 pub trait NonFungibleToken<AccountId>{
@@ -11,7 +10,7 @@ pub trait NonFungibleToken<AccountId>{
 	//
 	// fn administrator() -> AccountId;
 	fn symbol() -> Vec<u8>;
-	fn name() -> Vec<u8>;
+	fn get_name() -> Vec<u8>;
 	fn token_uri(token_id: Vec<u8>) -> Vec<u8>;
 	fn total() -> u32;
 

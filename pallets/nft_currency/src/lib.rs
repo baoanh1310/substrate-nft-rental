@@ -9,9 +9,9 @@ mod nft;
 use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}, ensure, traits::{Get,Randomness}};
 use frame_support::{pallet_prelude::{StorageMap,StorageValue}};
 use frame_support::traits::Currency;
+use frame_support::traits::EnsureOrigin;
 use nft::NonFungibleToken;
-use frame_system::{ensure_signed, ensure_root};
-use frame_system::EnsureRoot;
+use frame_system::{ensure_signed};
 
 #[cfg(test)]
 mod mock;
@@ -47,7 +47,7 @@ pub mod pallet {
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
-	#[pallet::getter(fn name)]
+	#[pallet::getter(fn get_name)]
 	// name of the nft
 	pub (super) type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
 
@@ -93,9 +93,8 @@ pub mod pallet {
 		/// Event documentation should end with an array that provides descriptive names for event
 		/// parameters. [something, who]
 		Mint(T::AccountId, Vec<u8>),
-		Burn(Vec<u8>),
-		Transfer(T::AccountId, T::AccountId, u64),
-		Approve(T::AccountId, T::AccountId, u64),
+		Transfer(T::AccountId, T::AccountId, Vec<u8>),
+		Approve(T::AccountId, T::AccountId, Vec<u8>),
 	}
 
 	// Errors inform users that something went wrong.
@@ -124,7 +123,11 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000_000)]
-		pub fn transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
+		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(who == Self::owner_of(token_id.clone()),Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
+			Self::deposit_event(Event::Transfer(who,to,token_id));
 			Ok(())
 		}
 	}
@@ -133,7 +136,7 @@ pub mod pallet {
 // helper functions
 impl <T:Config>  Pallet<T>{
 	fn do_approve(from: &T::AccountId, to: &T::AccountId, token_id: Vec<u8>) -> DispatchResult{
-		let owner = TokenOwner::<T>::get(token_id).unwrap();
+		let owner = TokenOwner::<T>::get(token_id.clone()).unwrap();
 		ensure!(*from==owner || Self::is_approve_for_all((owner.clone(), from.clone())).unwrap(), "Not Owner nor approved");
 		TokenApproval::<T>::mutate(token_id.clone(), |list_account|{
 			if let Some(l) = list_account {
@@ -168,8 +171,8 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 		Self::symbol()
 	}
 
-	fn name() -> Vec<u8>{
-		Self::name()
+	fn get_name() -> Vec<u8>{
+		Self::get_name()
 	}
 
 	fn token_uri(token_id: Vec<u8>) -> Vec<u8> {
