@@ -265,9 +265,9 @@ impl pallet_sudo::Config for Runtime {
 /// Configure the pallet-nft_currency in pallets/nft_currency.
 impl pallet_nft_currency::Config for Runtime {
 	type Event = Event;
-	type TokenId = u64 ;
 	type Currency = Balances;
-	//type ForceOrigin = Call;
+	type Administrator= Call;
+	type Randomness = RandomnessCollectiveFlip;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
