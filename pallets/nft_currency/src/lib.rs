@@ -35,7 +35,7 @@ pub mod pallet {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		type Currency: Currency<Self::AccountId>;
-		type Administrator : EnsureOrigin<Self::Origin>;
+		// type Administrator : EnsureOrigin<Self::Origin>;
 		type Randomness : Randomness<Self::Hash, Self::BlockNumber>;
 	}
 
@@ -114,15 +114,15 @@ pub mod pallet {
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		#[pallet::weight(10_000_000)]
-		pub fn mint(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
-			T::Administrator::ensure_origin(origin)?;
-			let token_id = <Self as NonFungibleToken<_>>::mint(to.clone())?;
+		#[pallet::weight(1_000_000)]
+		pub fn mint_to(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
+			// let who = ensure_signed(origin)?;
+			let token_id = Self::do_mint(to.clone())?;
 			Self::deposit_event(Event::Mint(to,token_id));
 			Ok(())
 		}
 
-		#[pallet::weight(10_000_000)]
+		#[pallet::weight(1_000_000)]
 		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::owner_of(token_id.clone()),Error::<T>::NotOwner);
@@ -131,7 +131,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(10_000_000)]
+		#[pallet::weight(1_000_000)]
 		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (from.clone(),who.clone());
@@ -163,21 +163,23 @@ impl <T:Config>  Pallet<T>{
 		Ok(())
 	}
 
+	fn do_mint(to: T::AccountId) -> Result<Vec<u8>,DispatchError>{
+		Self::mint(to)
+	}
+
 	fn gen_token_id() -> Vec<u8> {
 		let nonce = TotalTokens::<T>::get();
 		let n = nonce.encode();
 		let (rand, _) = T::Randomness::random(&n);
 		rand.encode()
 	}
+
 }
 
 
 impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	type Currency = T::Currency;
-	// type Administrator = T::ForceOrigin;
-	// fn administrator() -> T::AccountId{
-	// 	Self::administrator()
-	// }
+
 	fn symbol() -> Vec<u8> {
 		Self::symbol()
 	}

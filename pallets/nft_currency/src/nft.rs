@@ -6,8 +6,7 @@ use sp_std::vec::Vec;
 pub trait NonFungibleToken<AccountId>{
 	// type TokenId: Parameter+ Member +MaxEncodedLen+EncodeLike + Default+ Copy+Into<u64> ;
 	type Currency: Currency<AccountId>;
-	// type Administrator : EnsureOrigin<Self::AccountId>;
-	//
+	// type Administrator : EnsureOrigin<AccountId>;
 	// fn administrator() -> AccountId;
 	fn symbol() -> Vec<u8>;
 	fn get_name() -> Vec<u8>;
