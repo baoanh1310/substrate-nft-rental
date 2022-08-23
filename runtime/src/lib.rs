@@ -36,6 +36,7 @@ pub use frame_support::{
 	StorageValue,
 };
 pub use frame_system::Call as SystemCall;
+//use frame_system::Origin;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
 use pallet_transaction_payment::CurrencyAdapter;
@@ -266,7 +267,7 @@ impl pallet_sudo::Config for Runtime {
 impl pallet_nft_currency::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type Administrator= Call;
+	type Administrator= Origin;
 	type Randomness = RandomnessCollectiveFlip;
 }
 

@@ -123,11 +123,22 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000_000)]
-		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
+		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::owner_of(token_id.clone()),Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
 			Self::deposit_event(Event::Transfer(who,to,token_id));
+			Ok(())
+		}
+
+		#[pallet::weight(10_000_000)]
+		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			let account = (from.clone(),who.clone());
+			ensure!(who == Self::owner_of(token_id.clone())|| Self::is_approve_for_all(account).unwrap(),Error::<T>::NotOwner);
+
+			<Self as NonFungibleToken<_>>::transfer(from.clone(),to.clone(),token_id.clone())?;
+			Self::deposit_event(Event::Transfer(from,to,token_id));
 			Ok(())
 		}
 	}
@@ -194,7 +205,7 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError>  {
 		let token_id = Self::gen_token_id();
 		TotalTokens::<T>::mutate(|value| *value+=1);
-		TokenOwner::<T>::mutate(token_id, |account| {
+		TokenOwner::<T>::mutate(token_id.clone(), |account| {
 			if let Some(t) = account {
 				*t = owner.clone();
 			}
@@ -204,11 +215,11 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 				list.push(token_id.clone())
 			}
 		});
-		Ok(token_id.clone())
+		Ok(token_id)
 	}
 
 	fn transfer(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
-		ensure!(from == Self::owner_of(token_id), Error::<T>::NotOwner);
+		ensure!(from == Self::owner_of(token_id.clone()), Error::<T>::NotOwner);
 		TokenOwner::<T>::mutate(token_id.clone(), |owner| {
 			if let Some(o) = owner {
 				*o = to.clone()
