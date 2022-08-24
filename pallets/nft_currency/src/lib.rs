@@ -117,7 +117,7 @@ pub mod pallet {
 		#[pallet::weight(1_000_000)]
 		pub fn mint_to(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
 			// let who = ensure_signed(origin)?;
-			let token_id = Self::do_mint(to.clone())?;
+			let token_id = Self::do_mint(to.clone());
 			Self::deposit_event(Event::Mint(to,token_id));
 			Ok(())
 		}
