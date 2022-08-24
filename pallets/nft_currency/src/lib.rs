@@ -161,6 +161,14 @@ pub mod pallet {
 			Self::deposit_event(Event::ApproveForAll(who,account));
 			Ok(())
 		}
+
+		#[pallet::weight(1_000_000)]
+		pub fn set_token_uri(origin: OriginFor<T>, token_id: Vec<u8>,token_uri:Vec<u8>) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(who == Self::token_owner(token_id.clone()).unwrap(),Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::set_token_uri(token_id,token_uri)?;
+			Ok(())
+		}
 	}
 }
 
@@ -246,6 +254,11 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 		Approval::<T>::mutate(account, |approved|{
 			*approved = Some(true);
 		} );
+		Ok(())
+	}
+
+	fn set_token_uri(token_id: Vec<u8>, token_uri:Vec<u8>) -> DispatchResult{
+		TokenUri::<T>::mutate(token_id,|uri| *uri = Some(token_uri));
 		Ok(())
 	}
 }
