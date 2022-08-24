@@ -47,7 +47,7 @@ pub mod pallet {
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
-	#[pallet::getter(fn get_name)]
+	#[pallet::getter(fn nft_name)]
 	// name of the nft
 	pub (super) type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
 
@@ -74,7 +74,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn owner_token)]
 	// To check all the token that the account owns
-	pub (super) type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, OptionQuery>;
+	pub (super) type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn is_approve_for_all)]
@@ -83,7 +83,7 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn token_approval)]
-	pub (super) type TokenApproval<T:Config> = StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<T::AccountId>, OptionQuery>;
+	pub (super) type TokenApproval<T:Config> = StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<T::AccountId>, ValueQuery>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -95,6 +95,7 @@ pub mod pallet {
 		Mint(T::AccountId, Vec<u8>),
 		Transfer(T::AccountId, T::AccountId, Vec<u8>),
 		Approve(T::AccountId, T::AccountId, Vec<u8>),
+		ApproveForAll(T::AccountId, T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -106,7 +107,8 @@ pub mod pallet {
 		StorageOverflow,
 		Invalid,
 		NotOwner,
-		NoneExist
+		NoneExist,
+		NotOwnerNorOperator,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -116,16 +118,16 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(1_000_000)]
 		pub fn mint_to(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
-			// let who = ensure_signed(origin)?;
-			let token_id = Self::do_mint(to.clone())?;
+			let who = ensure_signed(origin)?;
+			let token_id = <Self as NonFungibleToken<_>>::mint(to.clone())?;
 			Self::deposit_event(Event::Mint(to,token_id));
 			Ok(())
 		}
 
 		#[pallet::weight(1_000_000)]
-		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+		pub fn transfer_token(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			ensure!(who == Self::owner_of(token_id.clone()),Error::<T>::NotOwner);
+			ensure!(who == Self::token_owner(token_id.clone()).unwrap() ,Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
 			Self::deposit_event(Event::Transfer(who,to,token_id));
 			Ok(())
@@ -135,10 +137,28 @@ pub mod pallet {
 		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (from.clone(),who.clone());
-			ensure!(who == Self::owner_of(token_id.clone())|| Self::is_approve_for_all(account).unwrap(),Error::<T>::NotOwner);
+			ensure!(who == Self::token_owner(token_id.clone()).unwrap() || Self::is_approve_for_all(account).unwrap(),Error::<T>::NotOwnerNorOperator);
 
 			<Self as NonFungibleToken<_>>::transfer(from.clone(),to.clone(),token_id.clone())?;
 			Self::deposit_event(Event::Transfer(from,to,token_id));
+			Ok(())
+		}
+
+		#[pallet::weight(1_000_000)]
+		pub fn approve(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			let account = (who.clone(),to.clone());
+			ensure!(who == Self::token_owner(token_id.clone()).unwrap(),Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::approve(who.clone(), to.clone(), token_id.clone())?;
+			Self::deposit_event(Event::Approve(who,to,token_id));
+			Ok(())
+		}
+
+		#[pallet::weight(1_000_000)]
+		pub fn approve_for_all(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			<Self as NonFungibleToken<_>>::set_approve_for_all(who.clone(), account.clone())?;
+			Self::deposit_event(Event::ApproveForAll(who,account));
 			Ok(())
 		}
 	}
@@ -146,27 +166,6 @@ pub mod pallet {
 
 // helper functions
 impl <T:Config>  Pallet<T>{
-	fn do_approve(from: &T::AccountId, to: &T::AccountId, token_id: Vec<u8>) -> DispatchResult{
-		let owner = TokenOwner::<T>::get(token_id.clone()).unwrap();
-		ensure!(*from==owner || Self::is_approve_for_all((owner.clone(), from.clone())).unwrap(), "Not Owner nor approved");
-		TokenApproval::<T>::mutate(token_id.clone(), |list_account|{
-			if let Some(l) = list_account {
-				l.push(to.clone());
-			}
-		} );
-		Ok(())
-	}
-
-	fn do_approve_for_all(from: &T::AccountId, to: &T::AccountId, approved: bool) -> DispatchResult{
-		let account = (from,to);
-		Approval::<T>::insert(account,true);
-		Ok(())
-	}
-
-	fn do_mint(to: T::AccountId) -> Result<Vec<u8>,DispatchError>{
-		Self::mint(to)
-	}
-
 	fn gen_token_id() -> Vec<u8> {
 		let nonce = TotalTokens::<T>::get();
 		let n = nonce.encode();
@@ -181,80 +180,72 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	type Currency = T::Currency;
 
 	fn symbol() -> Vec<u8> {
-		Self::symbol()
+		Symbol::<T>::get()
 	}
 
 	fn get_name() -> Vec<u8>{
-		Self::get_name()
+		Name::<T>::get()
 	}
 
 	fn token_uri(token_id: Vec<u8>) -> Vec<u8> {
-		Self::token_uri(token_id).unwrap()
+		TokenUri::<T>::get(token_id).unwrap()
 	}
 
 	fn total() -> u32 {
-		Self::total_tokens()
+		TotalTokens::<T>::get()
 	}
 
-	fn total_of_account(account: &T::AccountId) -> u64 {
-		Self::total_of_account(account)
-	}
-
-	fn owner_of(token_id: Vec<u8>) -> T::AccountId {
-		Self::owner_of(token_id)
+	fn owner_of_token(token_id: Vec<u8>) -> T::AccountId {
+		Self::token_owner(token_id).unwrap()
 	}
 
 	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError>  {
 		let token_id = Self::gen_token_id();
 		TotalTokens::<T>::mutate(|value| *value+=1);
 		TokenOwner::<T>::mutate(token_id.clone(), |account| {
-			if let Some(t) = account {
-				*t = owner.clone();
-			}
+			*account = Some(owner.clone());
+
 		});
 		OwnerToken::<T>::mutate(owner,|list_token| {
-			if let Some(list) = list_token {
-				list.push(token_id.clone())
-			}
+			list_token.push(token_id.clone());
 		});
 		Ok(token_id)
 	}
 
 	fn transfer(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
-		ensure!(from == Self::owner_of(token_id.clone()), Error::<T>::NotOwner);
-		TokenOwner::<T>::mutate(token_id.clone(), |owner| {
-			if let Some(o) = owner {
-				*o = to.clone()
-			}
-		});
+		ensure!(from == Self::owner_of_token(token_id.clone()), Error::<T>::NotOwner);
 		TokenOwner::<T>::mutate(token_id.clone(), |owner| *owner = Some(to.clone()));
-		let list_token = OwnerToken::<T>::get(&from);
-		let mut index = 0;
-		for token in list_token.unwrap().iter() {
-			if *token == token_id {
-				break;
-			}
-			index += 1;
-		}
+		OwnerToken::<T>::mutate(to,|list_token| {
+			list_token.push(token_id.clone());
+		});
 		OwnerToken::<T>::mutate(from,|list_token| {
-			if let Some(list) = list_token {
-				list.remove(index);
+			if let Some(ind) = list_token.iter().position(|id| *id == token_id) {
+				list_token.swap_remove(ind);
+				return Ok(())
 			}
+			Err(())
 		});
 		Ok(())
 	}
 
 	fn is_approve_for_all(account_approve:(T::AccountId, T::AccountId)) -> bool {
-		Self::is_approve_for_all(account_approve).unwrap()
+		Approval::<T>::get(account_approve).unwrap()
 	}
 
-	fn approve(from: &T::AccountId, to: &T::AccountId, token_id: Vec<u8>) -> DispatchResult {
-		Self::do_approve(from, to, token_id)
+	fn approve(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
+		let owner = TokenOwner::<T>::get(token_id.clone()).unwrap();
+		ensure!(from==owner, "Not Owner nor approved");
+		TokenApproval::<T>::mutate(token_id.clone(), |list_account|{
+			list_account.push(to);
+		} );
+		Ok(())
 	}
 
-	fn set_approve_for_all(from: &T::AccountId, to: &T::AccountId,approved:bool) -> DispatchResult {
-		ensure!(from!=to, Error::<T>::Invalid);
-		Self::do_approve_for_all(from,to,approved);
+	fn set_approve_for_all(from: T::AccountId, to: T::AccountId) -> DispatchResult {
+		let account = (from,to);
+		Approval::<T>::mutate(account, |approved|{
+			*approved = Some(true);
+		} );
 		Ok(())
 	}
 }
