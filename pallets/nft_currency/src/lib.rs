@@ -116,7 +116,7 @@ pub mod pallet {
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(33_963_000 + T::DbWeight::get().reads_writes(4, 3))]
 		pub fn mint_to(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let token_id = <Self as NonFungibleToken<_>>::mint(to.clone())?;
@@ -124,7 +124,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(35_678_000 + T::DbWeight::get().reads_writes(3, 3))]
 		pub fn transfer_token(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::token_owner(token_id.clone()).unwrap() ,Error::<T>::NotOwner);
@@ -137,7 +137,9 @@ pub mod pallet {
 		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (from.clone(),who.clone());
-			ensure!(who == Self::token_owner(token_id.clone()).unwrap() || Self::is_approve_for_all(account).unwrap(),Error::<T>::NotOwnerNorOperator);
+			ensure!(who == Self::token_owner(token_id.clone()).unwrap() ||
+				Self::is_approve_for_all(account).unwrap(),
+				Error::<T>::NotOwnerNorOperator);
 
 			<Self as NonFungibleToken<_>>::transfer(from.clone(),to.clone(),token_id.clone())?;
 			Self::deposit_event(Event::Transfer(from,to,token_id));
