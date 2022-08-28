@@ -78,7 +78,8 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn is_approve_for_all)]
-	// To check all the token that the account owns
+	// To check all the token that the account owns;
+	// (from,to) => bool
 	pub (super) type Approval<T:Config> = StorageMap<_, Blake2_128Concat, (T::AccountId,T::AccountId),bool, OptionQuery>;
 
 	#[pallet::storage]
@@ -133,7 +134,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(54_275_000 + T::DbWeight::get().reads_writes(4, 3))]
 		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (from.clone(),who.clone());
@@ -146,7 +147,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(38_030_000 + T::DbWeight::get().reads_writes(2,1))]
 		pub fn approve(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (who.clone(),to.clone());
@@ -156,7 +157,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(26_615_000 + T::DbWeight::get().reads_writes(1,1))]
 		pub fn approve_for_all(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			<Self as NonFungibleToken<_>>::set_approve_for_all(who.clone(), account.clone())?;
@@ -164,7 +165,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(1_000_000)]
+		#[pallet::weight(17_653_000 + T::DbWeight::get().reads_writes(2,1))]
 		pub fn set_token_uri(origin: OriginFor<T>, token_id: Vec<u8>,token_uri:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::token_owner(token_id.clone()).unwrap(),Error::<T>::NotOwner);
