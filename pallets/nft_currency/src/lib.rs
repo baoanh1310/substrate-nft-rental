@@ -5,12 +5,12 @@ use codec::Encode;
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
-mod nft;
+pub mod nft;
 use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}, ensure, traits::{Get,Randomness}};
 use frame_support::{pallet_prelude::{StorageMap,StorageValue}};
 use frame_support::traits::Currency;
 use frame_support::traits::EnsureOrigin;
-use nft::NonFungibleToken;
+pub use nft::NonFungibleToken;
 use frame_system::{ensure_signed};
 
 #[cfg(test)]
@@ -34,7 +34,6 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		type Currency: Currency<Self::AccountId>;
 		// type Administrator : EnsureOrigin<Self::Origin>;
 		type Randomness : Randomness<Self::Hash, Self::BlockNumber>;
 	}
@@ -67,12 +66,12 @@ pub mod pallet {
 	pub (super) type TotalTokens<T> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::storage]
-	#[pallet::getter(fn token_owner)]
+	#[pallet::getter(fn owner_of)]
 	// Mapping Token Id => Account Id: to check who is the owner of the token
 	pub (super) type TokenOwner<T:Config> = StorageMap<_,Blake2_128Concat,Vec<u8>,T::AccountId, OptionQuery>;
 
 	#[pallet::storage]
-	#[pallet::getter(fn owner_token)]
+	#[pallet::getter(fn owned_tokens)]
 	// To check all the token that the account owns
 	pub (super) type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, ValueQuery>;
 
@@ -128,7 +127,7 @@ pub mod pallet {
 		#[pallet::weight(35_678_000 + T::DbWeight::get().reads_writes(3, 3))]
 		pub fn transfer_token(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			ensure!(who == Self::token_owner(token_id.clone()).unwrap() ,Error::<T>::NotOwner);
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap() ,Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
 			Self::deposit_event(Event::Transfer(who,to,token_id));
 			Ok(())
@@ -138,7 +137,7 @@ pub mod pallet {
 		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (from.clone(),who.clone());
-			ensure!(who == Self::token_owner(token_id.clone()).unwrap() ||
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap() ||
 				Self::is_approve_for_all(account).unwrap(),
 				Error::<T>::NotOwnerNorOperator);
 
@@ -151,7 +150,7 @@ pub mod pallet {
 		pub fn approve(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let account = (who.clone(),to.clone());
-			ensure!(who == Self::token_owner(token_id.clone()).unwrap(),Error::<T>::NotOwner);
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(),Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::approve(who.clone(), to.clone(), token_id.clone())?;
 			Self::deposit_event(Event::Approve(who,to,token_id));
 			Ok(())
@@ -167,8 +166,9 @@ pub mod pallet {
 
 		#[pallet::weight(17_653_000 + T::DbWeight::get().reads_writes(2,1))]
 		pub fn set_token_uri(origin: OriginFor<T>, token_id: Vec<u8>,token_uri:Vec<u8>) -> DispatchResult {
+
 			let who = ensure_signed(origin)?;
-			ensure!(who == Self::token_owner(token_id.clone()).unwrap(),Error::<T>::NotOwner);
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(),Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::set_token_uri(token_id,token_uri)?;
 			Ok(())
 		}
@@ -188,8 +188,6 @@ impl <T:Config>  Pallet<T>{
 
 
 impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
-	type Currency = T::Currency;
-
 	fn symbol() -> Vec<u8> {
 		Symbol::<T>::get()
 	}
@@ -207,7 +205,7 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	}
 
 	fn owner_of_token(token_id: Vec<u8>) -> T::AccountId {
-		Self::token_owner(token_id).unwrap()
+		Self::owner_of(token_id).unwrap()
 	}
 
 	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError>  {
