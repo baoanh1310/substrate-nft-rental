@@ -6,12 +6,16 @@ use codec::Encode;
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 pub mod nft;
-use frame_support::{dispatch::{result::Result, DispatchError, DispatchResult}, ensure, traits::{Get,Randomness}};
-use frame_support::{pallet_prelude::{StorageMap,StorageValue}};
+use frame_support::pallet_prelude::{StorageMap, StorageValue};
 use frame_support::traits::Currency;
 use frame_support::traits::EnsureOrigin;
+use frame_support::{
+	dispatch::{result::Result, DispatchError, DispatchResult},
+	ensure,
+	traits::{Get, Randomness},
+};
+use frame_system::ensure_signed;
 pub use nft::NonFungibleToken;
-use frame_system::{ensure_signed};
 
 #[cfg(test)]
 mod mock;
@@ -21,21 +25,21 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
-pub use sp_std::{vec::Vec, convert::Into};
+pub use sp_std::{convert::Into, vec::Vec};
 
 #[frame_support::pallet]
 pub mod pallet {
+	pub use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::{Currency, Randomness};
 	use frame_system::pallet_prelude::*;
-	pub use super::*;
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		// type Administrator : EnsureOrigin<Self::Origin>;
-		type Randomness : Randomness<Self::Hash, Self::BlockNumber>;
+		type Randomness: Randomness<Self::Hash, Self::BlockNumber>;
 	}
 
 	#[pallet::pallet]
@@ -48,42 +52,59 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn nft_name)]
 	// name of the nft
-	pub (super) type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
+	pub(super) type Name<T> = StorageValue<_, Vec<u8>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn symbol)]
 	// symbol of the nft
-	pub (super) type Symbol<T> = StorageValue<_, Vec<u8>, ValueQuery>;
+	pub(super) type Symbol<T> = StorageValue<_, Vec<u8>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn token_uri)]
 	// uri of the nft
-	pub (super) type TokenUri<T: Config>  = StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<u8>, OptionQuery>;
+	pub(super) type TokenUri<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<u8>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn total_tokens)]
 	// total count of the token
-	pub (super) type TotalTokens<T> = StorageValue<_, u32, ValueQuery>;
+	pub(super) type TotalTokens<T> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn owner_of)]
 	// Mapping Token Id => Account Id: to check who is the owner of the token
-	pub (super) type TokenOwner<T:Config> = StorageMap<_,Blake2_128Concat,Vec<u8>,T::AccountId, OptionQuery>;
+	pub(super) type TokenOwner<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, T::AccountId, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn price_of_token)]
+	// Mapping Token Id => Price: to check current renting price for a specific token
+	pub(super) type RentingPrice<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, u32, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn renting_time)]
+	// Mapping Token Id => Time: to check length of renting time for a specific token
+	pub(super) type RentingTime<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, u128, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn owned_tokens)]
 	// To check all the token that the account owns
-	pub (super) type OwnerToken<T:Config> = StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, ValueQuery>;
+	pub(super) type OwnerToken<T: Config> =
+		StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn is_approve_for_all)]
 	// To check all the token that the account owns;
 	// (from,to) => bool
-	pub (super) type Approval<T:Config> = StorageMap<_, Blake2_128Concat, (T::AccountId,T::AccountId),bool, OptionQuery>;
+	pub(super) type Approval<T: Config> =
+		StorageMap<_, Blake2_128Concat, (T::AccountId, T::AccountId), bool, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn token_approval)]
-	pub (super) type TokenApproval<T:Config> = StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<T::AccountId>, ValueQuery>;
+	pub(super) type TokenApproval<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, Vec<T::AccountId>, ValueQuery>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -120,39 +141,54 @@ pub mod pallet {
 		pub fn mint_to(origin: OriginFor<T>, to: T::AccountId) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			let token_id = <Self as NonFungibleToken<_>>::mint(to.clone())?;
-			Self::deposit_event(Event::Mint(to,token_id));
+			Self::deposit_event(Event::Mint(to, token_id));
 			Ok(())
 		}
 
 		#[pallet::weight(35_678_000 + T::DbWeight::get().reads_writes(3, 3))]
-		pub fn transfer_token(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+		pub fn transfer_token(
+			origin: OriginFor<T>,
+			to: T::AccountId,
+			token_id: Vec<u8>,
+		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			ensure!(who == Self::owner_of(token_id.clone()).unwrap() ,Error::<T>::NotOwner);
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
-			Self::deposit_event(Event::Transfer(who,to,token_id));
+			Self::deposit_event(Event::Transfer(who, to, token_id));
 			Ok(())
 		}
 
 		#[pallet::weight(54_275_000 + T::DbWeight::get().reads_writes(4, 3))]
-		pub fn safe_transfer(origin: OriginFor<T>,from: T::AccountId, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+		pub fn safe_transfer(
+			origin: OriginFor<T>,
+			from: T::AccountId,
+			to: T::AccountId,
+			token_id: Vec<u8>,
+		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			let account = (from.clone(),who.clone());
-			ensure!(who == Self::owner_of(token_id.clone()).unwrap() ||
-				Self::is_approve_for_all(account).unwrap(),
-				Error::<T>::NotOwnerNorOperator);
+			let account = (from.clone(), who.clone());
+			ensure!(
+				who == Self::owner_of(token_id.clone()).unwrap()
+					|| Self::is_approve_for_all(account).unwrap(),
+				Error::<T>::NotOwnerNorOperator
+			);
 
-			<Self as NonFungibleToken<_>>::transfer(from.clone(),to.clone(),token_id.clone())?;
-			Self::deposit_event(Event::Transfer(from,to,token_id));
+			<Self as NonFungibleToken<_>>::transfer(from.clone(), to.clone(), token_id.clone())?;
+			Self::deposit_event(Event::Transfer(from, to, token_id));
 			Ok(())
 		}
 
 		#[pallet::weight(38_030_000 + T::DbWeight::get().reads_writes(2,1))]
-		pub fn approve(origin: OriginFor<T>, to: T::AccountId, token_id:Vec<u8>) -> DispatchResult {
+		pub fn approve(
+			origin: OriginFor<T>,
+			to: T::AccountId,
+			token_id: Vec<u8>,
+		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			let account = (who.clone(),to.clone());
-			ensure!(who == Self::owner_of(token_id.clone()).unwrap(),Error::<T>::NotOwner);
+			let account = (who.clone(), to.clone());
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
 			<Self as NonFungibleToken<_>>::approve(who.clone(), to.clone(), token_id.clone())?;
-			Self::deposit_event(Event::Approve(who,to,token_id));
+			Self::deposit_event(Event::Approve(who, to, token_id));
 			Ok(())
 		}
 
@@ -160,40 +196,73 @@ pub mod pallet {
 		pub fn approve_for_all(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			<Self as NonFungibleToken<_>>::set_approve_for_all(who.clone(), account.clone())?;
-			Self::deposit_event(Event::ApproveForAll(who,account));
+			Self::deposit_event(Event::ApproveForAll(who, account));
 			Ok(())
 		}
 
 		#[pallet::weight(17_653_000 + T::DbWeight::get().reads_writes(2,1))]
-		pub fn set_token_uri(origin: OriginFor<T>, token_id: Vec<u8>,token_uri:Vec<u8>) -> DispatchResult {
-
+		pub fn set_token_uri(
+			origin: OriginFor<T>,
+			token_id: Vec<u8>,
+			token_uri: Vec<u8>,
+		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
-			ensure!(who == Self::owner_of(token_id.clone()).unwrap(),Error::<T>::NotOwner);
-			<Self as NonFungibleToken<_>>::set_token_uri(token_id,token_uri)?;
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::set_token_uri(token_id, token_uri)?;
+			Ok(())
+		}
+
+		#[pallet::weight(50_000_000 + T::DbWeight::get().reads_writes(2,1))]
+		pub fn set_token_renting_price(
+			origin: OriginFor<T>,
+			token_id: Vec<u8>,
+			price: u32,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::set_token_renting_price(token_id, price)?;
+			Ok(())
+		}
+
+		#[pallet::weight(50_000_000 + T::DbWeight::get().reads_writes(2,1))]
+		pub fn set_token_renting_time(
+			origin: OriginFor<T>,
+			token_id: Vec<u8>,
+			time: u128,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::set_token_renting_time(token_id, time)?;
 			Ok(())
 		}
 	}
 }
 
 // helper functions
-impl <T:Config>  Pallet<T>{
+impl<T: Config> Pallet<T> {
 	fn gen_token_id() -> Vec<u8> {
 		let nonce = TotalTokens::<T>::get();
 		let n = nonce.encode();
 		let (rand, _) = T::Randomness::random(&n);
 		rand.encode()
 	}
-
 }
 
-
-impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
+impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 	fn symbol() -> Vec<u8> {
 		Symbol::<T>::get()
 	}
 
-	fn get_name() -> Vec<u8>{
+	fn get_name() -> Vec<u8> {
 		Name::<T>::get()
+	}
+
+	fn renting_price_of_token(token_id: Vec<u8>) -> u32 {
+		RentingPrice::<T>::get(token_id).unwrap()
+	}
+
+	fn renting_time_of_token(token_id: Vec<u8>) -> u128 {
+		RentingTime::<T>::get(token_id).unwrap()
 	}
 
 	fn token_uri(token_id: Vec<u8>) -> Vec<u8> {
@@ -208,14 +277,13 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 		Self::owner_of(token_id).unwrap()
 	}
 
-	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError>  {
+	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError> {
 		let token_id = Self::gen_token_id();
-		TotalTokens::<T>::mutate(|value| *value+=1);
+		TotalTokens::<T>::mutate(|value| *value += 1);
 		TokenOwner::<T>::mutate(token_id.clone(), |account| {
 			*account = Some(owner.clone());
-
 		});
-		OwnerToken::<T>::mutate(owner,|list_token| {
+		OwnerToken::<T>::mutate(owner, |list_token| {
 			list_token.push(token_id.clone());
 		});
 		Ok(token_id)
@@ -224,42 +292,52 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T>{
 	fn transfer(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
 		ensure!(from == Self::owner_of_token(token_id.clone()), Error::<T>::NotOwner);
 		TokenOwner::<T>::mutate(token_id.clone(), |owner| *owner = Some(to.clone()));
-		OwnerToken::<T>::mutate(to,|list_token| {
+		OwnerToken::<T>::mutate(to, |list_token| {
 			list_token.push(token_id.clone());
 		});
-		OwnerToken::<T>::mutate(from,|list_token| {
+		OwnerToken::<T>::mutate(from, |list_token| {
 			if let Some(ind) = list_token.iter().position(|id| *id == token_id) {
 				list_token.swap_remove(ind);
-				return Ok(())
+				return Ok(());
 			}
 			Err(())
 		});
 		Ok(())
 	}
 
-	fn is_approve_for_all(account_approve:(T::AccountId, T::AccountId)) -> bool {
+	fn is_approve_for_all(account_approve: (T::AccountId, T::AccountId)) -> bool {
 		Approval::<T>::get(account_approve).unwrap()
 	}
 
 	fn approve(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
 		let owner = TokenOwner::<T>::get(token_id.clone()).unwrap();
-		ensure!(from==owner, "Not Owner nor approved");
-		TokenApproval::<T>::mutate(token_id.clone(), |list_account|{
+		ensure!(from == owner, "Not Owner nor approved");
+		TokenApproval::<T>::mutate(token_id.clone(), |list_account| {
 			list_account.push(to);
-		} );
+		});
 		Ok(())
 	}
 
 	fn set_approve_for_all(from: T::AccountId, to: T::AccountId) -> DispatchResult {
-		let account = (from,to);
-		Approval::<T>::mutate(account, |approved|{
+		let account = (from, to);
+		Approval::<T>::mutate(account, |approved| {
 			*approved = Some(true);
-		} );
+		});
 		Ok(())
 	}
 
-	fn set_token_uri(token_id: Vec<u8>, token_uri:Vec<u8>) -> DispatchResult{
-		TokenUri::<T>::mutate(token_id,|uri| *uri = Some(token_uri));
+	fn set_token_uri(token_id: Vec<u8>, token_uri: Vec<u8>) -> DispatchResult {
+		TokenUri::<T>::mutate(token_id, |uri| *uri = Some(token_uri));
+		Ok(())
+	}
+
+	fn set_token_renting_price(token_id: Vec<u8>, price: u32) -> DispatchResult {
+		RentingPrice::<T>::mutate(token_id, |renting_price| *renting_price = Some(price));
+		Ok(())
+	}
+
+	fn set_token_renting_time(token_id: Vec<u8>, time: u128) -> DispatchResult {
+		RentingTime::<T>::mutate(token_id, |renting_time| *renting_time = Some(time));
 		Ok(())
 	}
 }
