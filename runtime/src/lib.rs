@@ -48,6 +48,9 @@ pub use sp_runtime::{Perbill, Permill};
 /// Import the nft_currency pallet.
 pub use pallet_nft_currency;
 
+/// Import renting pallet.
+pub use pallet_renting;
+
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -272,6 +275,11 @@ impl pallet_nft_currency::Config for Runtime {
 	type Randomness = RandomnessCollectiveFlip;
 }
 
+/// Configure the pallet-renting in pallets/renting.
+impl pallet_renting::Config for Runtime {
+	type Event = Event;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -289,6 +297,8 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		// Include the custom logic from the pallet-nft_currency in the runtime.
 		NftCurrencyPallet: pallet_nft_currency,
+		// Include the custom logic from pallet-renting in the runtime.
+		RentingPallet: pallet_renting,
 	}
 );
 
@@ -334,6 +344,7 @@ mod benches {
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
 		[pallet_nft_currency, NftCurrencyPallet]
+		[pallet_renting, RentingPallet]
 	);
 }
 
