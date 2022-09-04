@@ -12,6 +12,7 @@ pub trait NonFungibleToken<AccountId> {
 	fn renting_time_of_token(token_id: Vec<u8>) -> u128;
 	fn is_for_rent(token_id: Vec<u8>) -> bool;
 	fn is_renter_of_token(who: AccountId, token_id: Vec<u8>) -> bool;
+	fn is_borrowed_token(token_id: Vec<u8>) -> bool;
 
 	fn mint(owner: AccountId) -> Result<Vec<u8>, DispatchError>;
 	fn transfer(from: AccountId, to: AccountId, token_id: Vec<u8>) -> DispatchResult;

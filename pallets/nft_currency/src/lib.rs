@@ -141,6 +141,7 @@ pub mod pallet {
 		NotOwnerNorOperator,
 		NotEnoughBalance,
 		NotForRent,
+		IsBorrowed,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -164,7 +165,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
-			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone());
+			<Self as NonFungibleToken<_>>::transfer(who.clone(), to.clone(), token_id.clone())?;
 			Self::deposit_event(Event::Transfer(who, to, token_id));
 			Ok(())
 		}
@@ -352,6 +353,11 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 		return false;
 	}
 
+	fn is_borrowed_token(token_id: Vec<u8>) -> bool {
+		let list_account = TokenApproval::<T>::get(token_id.clone());
+		list_account.len() > 0
+	}
+
 	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError> {
 		let token_id = Self::gen_token_id();
 		TotalTokens::<T>::mutate(|value| *value += 1);
@@ -366,6 +372,8 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 
 	fn transfer(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
 		ensure!(from == Self::owner_of_token(token_id.clone()), Error::<T>::NotOwner);
+		// cannot transfer token if someone is borrowing it
+		ensure!(Self::is_borrowed_token(token_id.clone()) == false, Error::<T>::IsBorrowed);
 		TokenOwner::<T>::mutate(token_id.clone(), |owner| *owner = Some(to.clone()));
 		OwnerToken::<T>::mutate(to, |list_token| {
 			list_token.push(token_id.clone());
