@@ -12,9 +12,10 @@ use frame_support::traits::EnsureOrigin;
 use frame_support::{
 	dispatch::{result::Result, DispatchError, DispatchResult},
 	ensure,
-	traits::{Get, Randomness},
+	traits::{Get, Randomness, ExistenceRequirement},
 };
 use frame_system::ensure_signed;
+use frame_support::sp_runtime::traits::UniqueSaturatedInto;
 pub use nft::NonFungibleToken;
 
 #[cfg(test)]
@@ -40,6 +41,7 @@ pub mod pallet {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 		// type Administrator : EnsureOrigin<Self::Origin>;
 		type Randomness: Randomness<Self::Hash, Self::BlockNumber>;
+		type MyCurrency: Currency::<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -80,13 +82,19 @@ pub mod pallet {
 	#[pallet::getter(fn price_of_token)]
 	// Mapping Token Id => Price: to check current renting price for a specific token
 	pub(super) type RentingPrice<T: Config> =
-		StorageMap<_, Blake2_128Concat, Vec<u8>, u32, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, Vec<u8>, u128, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn renting_time)]
 	// Mapping Token Id => Time: to check length of renting time for a specific token
 	pub(super) type RentingTime<T: Config> =
 		StorageMap<_, Blake2_128Concat, Vec<u8>, u128, OptionQuery>;
+	
+	#[pallet::storage]
+	#[pallet::getter(fn for_rent)]
+	// Mapping Token Id => bool: to check a specific token is for rent or not
+	pub(super) type TokenForRent<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, bool, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn owned_tokens)]
@@ -117,6 +125,7 @@ pub mod pallet {
 		Transfer(T::AccountId, T::AccountId, Vec<u8>),
 		Approve(T::AccountId, T::AccountId, Vec<u8>),
 		ApproveForAll(T::AccountId, T::AccountId),
+		PayRentingFee(T::AccountId, T::AccountId, u128),
 	}
 
 	// Errors inform users that something went wrong.
@@ -130,6 +139,8 @@ pub mod pallet {
 		NotOwner,
 		NoneExist,
 		NotOwnerNorOperator,
+		NotEnoughBalance,
+		NotForRent,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -216,7 +227,7 @@ pub mod pallet {
 		pub fn set_token_renting_price(
 			origin: OriginFor<T>,
 			token_id: Vec<u8>,
-			price: u32,
+			price: u128,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
@@ -235,6 +246,44 @@ pub mod pallet {
 			<Self as NonFungibleToken<_>>::set_token_renting_time(token_id, time)?;
 			Ok(())
 		}
+
+		#[pallet::weight(50_000_000 + T::DbWeight::get().reads_writes(2,1))]
+		pub fn set_token_rent_info(
+			origin: OriginFor<T>,
+			token_id: Vec<u8>,
+			time: u128,
+			price: u128,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			ensure!(who == Self::owner_of(token_id.clone()).unwrap(), Error::<T>::NotOwner);
+			<Self as NonFungibleToken<_>>::set_token_for_rent(token_id.clone())?;
+			<Self as NonFungibleToken<_>>::set_token_renting_time(token_id.clone(), time)?;
+			<Self as NonFungibleToken<_>>::set_token_renting_price(token_id.clone(), price)?;
+			Ok(())
+		}
+
+		#[pallet::weight(50_000_000 + T::DbWeight::get().reads_writes(2,1))]
+		pub fn rent_nft(
+			origin: OriginFor<T>,
+			token_id: Vec<u8>
+		) -> DispatchResult {
+			ensure!(Self::is_for_rent(token_id.clone()), Error::<T>::NotForRent);
+			let renter = ensure_signed(origin)?;
+			let nft_owner = Self::owner_of(token_id.clone()).unwrap();
+			ensure!(nft_owner.clone() != renter.clone(), "Owner cannot borrow his own tokens!");
+			let renting_time = Self::renting_time_of_token(token_id.clone());
+			let renting_price = Self::renting_price_of_token(token_id.clone());
+
+			Self::pay_renting_fee(renter.clone(), nft_owner.clone(), renting_price);
+			<Self as NonFungibleToken<_>>::set_token_cancel_for_rent(token_id.clone())?;
+			Self::deposit_event(Event::PayRentingFee(renter.clone(), nft_owner.clone(), renting_price));
+
+			// approve nft ownership for renter
+			<Self as NonFungibleToken<_>>::approve(nft_owner.clone(), renter.clone(), token_id.clone())?;
+			Self::deposit_event(Event::Approve(nft_owner, renter, token_id));
+
+			Ok(())
+		}
 	}
 }
 
@@ -248,6 +297,19 @@ impl<T: Config> Pallet<T> {
 	}
 }
 
+impl<T: Config> Pallet<T> {
+
+    pub fn pay_renting_fee(renter: T::AccountId, nft_owner: T::AccountId, price: u128) -> DispatchResult {
+		let renting_price = price.unique_saturated_into();
+		// Check the renter has enough free balance
+		ensure!(T::MyCurrency::free_balance(&renter) >= renting_price, Error::<T>::NotEnoughBalance);
+
+		// transfer renting price to nft owner
+        T::MyCurrency::transfer(&renter, &nft_owner, renting_price, ExistenceRequirement::KeepAlive)?;
+		Ok(())
+    }
+}
+
 impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 	fn symbol() -> Vec<u8> {
 		Symbol::<T>::get()
@@ -257,12 +319,16 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 		Name::<T>::get()
 	}
 
-	fn renting_price_of_token(token_id: Vec<u8>) -> u32 {
-		RentingPrice::<T>::get(token_id).unwrap()
+	fn renting_price_of_token(token_id: Vec<u8>) -> u128 {
+		RentingPrice::<T>::get(token_id).unwrap_or_else(|| 0u128)
 	}
 
 	fn renting_time_of_token(token_id: Vec<u8>) -> u128 {
-		RentingTime::<T>::get(token_id).unwrap()
+		RentingTime::<T>::get(token_id).unwrap_or_else(|| 0u128)
+	}
+
+	fn is_for_rent(token_id: Vec<u8>) -> bool {
+		TokenForRent::<T>::get(token_id).unwrap_or_else(|| false)
 	}
 
 	fn token_uri(token_id: Vec<u8>) -> Vec<u8> {
@@ -275,6 +341,15 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 
 	fn owner_of_token(token_id: Vec<u8>) -> T::AccountId {
 		Self::owner_of(token_id).unwrap()
+	}
+
+	fn is_renter_of_token(who: T::AccountId, token_id: Vec<u8>) -> bool {
+		let list_account = TokenApproval::<T>::get(token_id.clone());
+		let find_account = list_account.into_iter().find(|account| *account == who);
+		if let Some(account) = find_account {
+			return true;
+		}
+		return false;
 	}
 
 	fn mint(owner: T::AccountId) -> Result<Vec<u8>, DispatchError> {
@@ -331,13 +406,25 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 		Ok(())
 	}
 
-	fn set_token_renting_price(token_id: Vec<u8>, price: u32) -> DispatchResult {
+	fn set_token_renting_price(token_id: Vec<u8>, price: u128) -> DispatchResult {
 		RentingPrice::<T>::mutate(token_id, |renting_price| *renting_price = Some(price));
 		Ok(())
 	}
 
 	fn set_token_renting_time(token_id: Vec<u8>, time: u128) -> DispatchResult {
 		RentingTime::<T>::mutate(token_id, |renting_time| *renting_time = Some(time));
+		Ok(())
+	}
+
+	fn set_token_for_rent(token_id: Vec<u8>) -> DispatchResult {
+		let list_account = TokenApproval::<T>::get(token_id.clone());
+		ensure!(list_account.len() == 0, "Cannot set rent info if someone is borrowing it!");
+		TokenForRent::<T>::mutate(token_id, |is_for_rent| *is_for_rent = Some(true));
+		Ok(())
+	}
+
+	fn set_token_cancel_for_rent(token_id: Vec<u8>) -> DispatchResult {
+		TokenForRent::<T>::mutate(token_id, |is_for_rent| *is_for_rent = Some(false));
 		Ok(())
 	}
 }
