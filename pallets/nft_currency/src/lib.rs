@@ -89,6 +89,12 @@ pub mod pallet {
 	// Mapping Token Id => Time: to check length of renting time for a specific token
 	pub(super) type RentingTime<T: Config> =
 		StorageMap<_, Blake2_128Concat, Vec<u8>, u128, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn renting_block_number)]
+	// Mapping Token Id => BlockNumber: to check when renting time end for a specific token
+	pub(super) type RentingBlockNumber<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, T::BlockNumber, OptionQuery>;
 	
 	#[pallet::storage]
 	#[pallet::getter(fn for_rent)]
@@ -281,9 +287,29 @@ pub mod pallet {
 
 			// approve nft ownership for renter
 			<Self as NonFungibleToken<_>>::approve(nft_owner.clone(), renter.clone(), token_id.clone())?;
+			
+			// set block number when renting_time is over
+			<Self as NonFungibleToken<_>>::set_token_giveback_block_number(token_id.clone())?;
+			
 			Self::deposit_event(Event::Approve(nft_owner, renter, token_id));
 
 			Ok(())
+		}
+	}
+
+	#[pallet::hooks]
+	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		fn on_finalize(n: T::BlockNumber) {
+			// loop through every tokens that are borrowed
+			for (token_id, block_number) in RentingBlockNumber::<T>::iter() {
+				if block_number == n {
+					// remove block number info of token: RentingBlockNumber
+					RentingBlockNumber::<T>::remove(token_id.clone());
+
+					// remove approve ownership of renter after renting_time: TokenApproval
+					TokenApproval::<T>::remove(token_id.clone());
+				}
+			}
 		}
 	}
 }
@@ -435,6 +461,20 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 
 	fn set_token_cancel_for_rent(token_id: Vec<u8>) -> DispatchResult {
 		TokenForRent::<T>::mutate(token_id, |is_for_rent| *is_for_rent = Some(false));
+		Ok(())
+	}
+
+	fn set_token_giveback_block_number(token_id: Vec<u8>) -> DispatchResult {
+		ensure!(!Self::is_for_rent(token_id.clone())
+		 && Self::is_borrowed_token(token_id.clone()), 
+		 "Can only set block number for borrowed token!");
+
+		let renting_time_in_miliseconds = RentingTime::<T>::get(token_id.clone()).unwrap_or_else(|| 0u128);
+		let number_of_blocks = renting_time_in_miliseconds as u32 / 6000;
+		let current_block_number = <frame_system::Pallet<T>>::block_number();
+		let block_number = current_block_number + number_of_blocks.into();
+		RentingBlockNumber::<T>::mutate(token_id, |renting_block_number| *renting_block_number = Some(block_number));
+		
 		Ok(())
 	}
 }

@@ -24,4 +24,5 @@ pub trait NonFungibleToken<AccountId> {
 	fn set_token_renting_time(token_id: Vec<u8>, time: u128) -> DispatchResult;
 	fn set_token_for_rent(token_id: Vec<u8>) -> DispatchResult;
 	fn set_token_cancel_for_rent(token_id: Vec<u8>) -> DispatchResult;
+	fn set_token_giveback_block_number(token_id: Vec<u8>) -> DispatchResult;
 }
