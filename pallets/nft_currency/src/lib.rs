@@ -395,6 +395,8 @@ impl<T: Config> NonFungibleToken<T::AccountId> for Pallet<T> {
 	fn approve(from: T::AccountId, to: T::AccountId, token_id: Vec<u8>) -> DispatchResult {
 		let owner = TokenOwner::<T>::get(token_id.clone()).unwrap();
 		ensure!(from == owner, "Not Owner nor approved");
+		// cannot approve token if someone is borrowing it
+		ensure!(Self::is_borrowed_token(token_id.clone()) == false, Error::<T>::IsBorrowed);
 		TokenApproval::<T>::mutate(token_id.clone(), |list_account| {
 			list_account.push(to);
 		});
